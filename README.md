@@ -21,6 +21,28 @@ The following metrics were observed during a successful local run on **October 3
 
 The live ingestion-to-dashboard path completed successfully. One scheduled analytics refresh was verified; a second scheduled cycle and prolonged unattended operation have not yet been validated.
 
+## Dashboard Preview
+
+Screenshots from a locally generated analytics snapshot on October 30, 2026. The dashboard is not a continuously running public deployment.
+
+### Fleet Overview
+
+![Fleet overview](docs/images/dashboard-overview.png)
+
+### Vehicle Location Map
+
+![Recorded vehicle locations across Phoenix](docs/images/vehicle-location-map.png)
+
+### Route-Level Analytics
+
+![Route observation counts](docs/images/route-analytics.png)
+
+### Movement Quality
+
+![Normal and suspicious-speed movements](docs/images/movement-quality.png)
+
+Suspicious-speed movements are identified using rules, not a trained machine-learning model.
+
 ## System architecture
 
 ```mermaid
@@ -236,7 +258,7 @@ docker compose stop
 2. Add automated tests for validation, deduplication, and movement enrichment, plus CI.
 3. Document Kafka persistence and recovery; migrate to explicitly managed durable storage where appropriate.
 4. Strengthen dashboard-reader coordination and snapshot retention for concurrent access.
-5. Add real dashboard screenshots and an operational walkthrough.
+5. Add an operational walkthrough and troubleshooting guide.
 6. Evaluate monitoring and deployment options after local reproducibility is improved.
 
 ## Project scope
