@@ -1,0 +1,47 @@
+# Python environment
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Operating system and editors
+.DS_Store
+.vscode/
+.idea/
+
+# Generated datasets and backups
+data/
+backups/
+
+# Spark streaming checkpoints
+checkpoints/
+**/checkpoint/
+**/checkpoints/
+
+# Spark and Hadoop temporary files
+spark-warehouse/
+metastore_db/
+derby.log
+*.crc
+
+# Logs and temporary outputs
+*.log
+logs/
+tmp/
+temp/
+
+# Streamlit local configuration
+.streamlit/secrets.toml
+
+# Local runtime artifacts
+*.lock
+spark/gold_analytics_backup.py
