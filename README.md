@@ -1,13 +1,32 @@
 # Real-Time Mobility Analytics Platform
 
-A local end-to-end mobility data engineering project that ingests GTFS-Realtime transit vehicle positions, streams events through Apache Kafka, processes observations with Apache Spark, and publishes analytics in a Streamlit dashboard.
+**End-to-end transit data engineering with GTFS-Realtime, Apache Kafka, PySpark, and Streamlit.**
 
-## Architecture
+A locally developed streaming analytics platform that ingests public-transit vehicle positions, validates and transports events through Kafka, processes observations through Bronze and Silver layers, enriches vehicle movements, and publishes Gold analytics to an interactive dashboard.
+
+The project emphasizes **data quality, deduplication, reproducible analytics, and safe snapshot publication**. It is a local engineering demonstration, not a production cloud deployment.
+
+## Verified local results
+
+The following metrics were observed during a successful local run on **October 30, 2026**. They describe that run only, not ongoing throughput or model performance.
+
+| Metric | Observed result |
+| --- | ---: |
+| Vehicle observations processed | **125,076** |
+| Distinct vehicles | **814** |
+| Route groups | **98** |
+| Normal movements | **124,065** |
+| Suspicious-speed movements | **197** |
+| First observations | **814** |
+
+The live ingestion-to-dashboard path completed successfully. One scheduled analytics refresh was verified; a second scheduled cycle and prolonged unattended operation have not yet been validated.
+
+## System architecture
 
 ```mermaid
 flowchart TD
     A[GTFS-Realtime vehicle feed] --> B[Python ingestion and validation]
-    B --> C[Kafka: vehicle-positions]
+    B --> C[Kafka topic: vehicle-positions]
     C --> D[Spark Structured Streaming: Bronze]
     D --> E[Spark Structured Streaming: deduplicated Silver]
     H[Historical Silver backups] --> F[Combined Silver snapshots]
@@ -22,42 +41,49 @@ flowchart TD
     L -. retention cleanup .-> M[Older snapshots]
 ```
 
-## Features
+### Pipeline stages
 
-- Python GTFS-Realtime ingestion and event validation.
-- Kafka-based vehicle observation transport.
-- Spark Structured Streaming Bronze and deduplicated Silver storage in Parquet.
-- Historical/live Silver consolidation with observation-key deduplication.
-- Movement enrichment with distance, elapsed time, calculated speed, and movement status (`FIRST_OBSERVATION`, `NORMAL`, `SUSPICIOUS_SPEED`).
-- Gold fleet summary, route summary, and latest vehicle position datasets.
-- Streamlit dashboard with fleet metrics, route analytics, and data freshness information.
-- Five-minute analytics refresh service, versioned snapshots, manifest-based publication, retention cleanup, and single-instance file locking.
+1. **Ingestion and validation:** Read vehicle positions from a GTFS-Realtime feed and validate incoming records before publishing.
+2. **Event transport:** Publish valid vehicle observations to the Kafka `vehicle-positions` topic.
+3. **Bronze streaming:** Consume Kafka events with Spark Structured Streaming and persist the raw observation layer in Parquet.
+4. **Silver processing:** Deduplicate streaming observations, then combine live Silver data with configured historical Silver backups.
+5. **Movement enrichment:** Compute per-vehicle distance, elapsed time, and derived speed; classify observations as `FIRST_OBSERVATION`, `NORMAL`, or `SUSPICIOUS_SPEED`.
+6. **Gold analytics:** Produce fleet summaries, route summaries, and latest vehicle positions.
+7. **Dashboard publication:** Write versioned Gold snapshots, update the `current.json` manifest, and visualize the published results with Streamlit and Plotly.
 
-## Example verified local run
+**Note:** `SUSPICIOUS_SPEED` is a movement-rule classification, **not a trained machine-learning model** or a verified fraud/anomaly ground-truth label.
 
-The following are observed results from a local run on **October 30, 2026**, not guaranteed values for future runs:
+## Engineering highlights
 
-| Metric | Result |
-|---|---:|
-| Total observations | 125,076 |
-| Distinct vehicles | 814 |
-| Route groups | 98 |
-| Normal movements | 124,065 |
-| Suspicious-speed movements | 197 |
-| First observations | 814 |
+- **Streaming pipeline:** Kafka decouples live feed ingestion from Spark processing.
+- **Data quality:** Input validation and Silver-layer deduplication reduce invalid and repeated observations.
+- **Historical + live consolidation:** Combined Silver snapshots deduplicate using vehicle ID, vehicle timestamp, latitude, and longitude.
+- **Movement analytics:** Enriched records support fleet monitoring and investigation of implausible movement speeds.
+- **Snapshot-based serving:** Gold datasets are versioned; a `current.json` manifest identifies the published snapshot for dashboard readers.
+- **Orchestration:** A local refresh process targets approximately five-minute analytics cycles and uses a file lock to prevent a second local instance from running simultaneously.
+- **Retention safeguards:** Cleanup retains recent snapshots and protects the currently published Gold snapshot; a local Streamlit-process check skips Gold deletion while the dashboard is detected.
 
-The full live ingestion-to-dashboard flow and one scheduled analytics refresh completed successfully. A second scheduled cycle has not yet been verified.
+These safeguards are **local development mechanisms**, not guarantees of distributed coordination or production fault tolerance.
 
-## Technologies
+## Technology stack
 
-Python 3.13, Apache Kafka (Docker Compose), Apache Spark / PySpark 4.2.0, GTFS-Realtime, Parquet, Pandas, PyArrow, Plotly, and Streamlit.
+| Layer | Technologies |
+| --- | --- |
+| Ingestion and validation | Python 3.13, GTFS-Realtime, Requests, Protobuf |
+| Messaging | Apache Kafka, Docker Compose |
+| Stream processing | Apache Spark / PySpark 4.2.0, Spark Structured Streaming |
+| Storage and analytics | Parquet, Pandas, PyArrow |
+| Dashboard | Streamlit, Plotly |
+| Orchestration | Python scripts, local file locking, snapshot manifests |
 
 ## Repository structure
 
 ```text
 .
-├── dashboard/app.py
-├── ingestion/fetch_live_data.py
+├── dashboard/
+│   └── app.py
+├── ingestion/
+│   └── fetch_live_data.py
 ├── orchestration/
 │   ├── cleanup_snapshots.py
 │   ├── refresh_combined_silver.py
@@ -67,26 +93,32 @@ Python 3.13, Apache Kafka (Docker Compose), Apache Spark / PySpark 4.2.0, GTFS-R
 │   ├── silver_stream_dedup.py
 │   ├── silver_movement_enrichment.py
 │   ├── gold_analytics.py
-│   └── check_*.py                 # diagnostic scripts
+│   └── check_*.py              # diagnostics and data-quality checks
 ├── streaming/
 │   ├── producer.py
 │   └── consumer.py
-├── validation/validate_vehicle.py
+├── validation/
+│   └── validate_vehicle.py
 ├── docker-compose.yml
 ├── requirements.txt
 └── README.md
 ```
 
-Generated datasets, checkpoints, backups, and virtual environments should be excluded from Git. Other experimental Spark scripts are retained in the source tree.
+Other experimental Spark scripts are retained in the repository. Generated datasets, backups, checkpoints, virtual environments, and local credentials are excluded from version control.
 
-## Local setup (macOS)
+## Local development setup
+
+> **Reproducibility limitation:** The current combined Silver refresh references dated historical backup directories that are not included in this repository. A fresh clone needs suitable historical data paths or an adaptation for live-only processing before the entire analytics flow can be reproduced. The instructions below document the development workflow; they are not a guaranteed one-command fresh-clone deployment.
 
 ### Prerequisites
 
-- Docker Desktop
+- macOS (the environment used for local development)
 - Python 3.13
+- Docker Desktop with Docker Compose
 - Java 17 (the development environment used Homebrew OpenJDK 17)
-- Network access to the GTFS-Realtime source configured in the ingestion code
+- Network access and valid authorization for the configured GTFS-Realtime feed
+
+### 1. Create a Python environment
 
 From the repository root:
 
@@ -94,14 +126,31 @@ From the repository root:
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
+```
+
+For the development machine's Java/Spark configuration:
+
+```bash
 export JAVA_HOME="/opt/homebrew/opt/openjdk@17"
 export PATH="$JAVA_HOME/bin:$PATH"
 export SPARK_LOCAL_IP=127.0.0.1
 ```
 
-Adjust `JAVA_HOME` for your operating system and installation. In each new terminal, activate the virtual environment; use the Java/Spark exports in terminals that launch Spark.
+Adjust `JAVA_HOME` for your own Java installation. Activate `.venv` in each new terminal and set the Java/Spark environment variables in terminals that launch Spark.
 
-### Start Kafka
+### 2. Configure GTFS-Realtime access
+
+Create a file named `.env` in the repository root containing:
+
+```dotenv
+VALLEY_METRO_API_KEY=YOUR_VALID_API_KEY
+```
+
+Replace the placeholder with a valid credential from the feed provider. The ingestion module reads this value through `python-dotenv`.
+
+**Never commit `.env`, API keys, tokens, or credentials.** The `.gitignore` excludes `.env`. Live ingestion will not work without valid feed access, but repository documentation and previously generated local datasets do not require an active key.
+
+### 3. Start Kafka
 
 ```bash
 docker compose up -d
@@ -111,11 +160,11 @@ docker exec realtime-kafka /opt/kafka/bin/kafka-topics.sh \
   --partitions 1 --replication-factor 1
 ```
 
-**Important:** The development Kafka container currently uses an anonymous Docker volume for `/var/lib/kafka/data`. Avoid `docker compose down -v` or recreating the container without first planning data migration: Kafka offset loss can invalidate existing Spark checkpoints. Use `docker compose stop` to stop the existing container safely.
+**Data persistence warning:** The development Kafka container currently uses an **anonymous Docker volume** at `/var/lib/kafka/data`. Do not use `docker compose down -v` or recreate the container without planning Kafka data migration. Losing Kafka offsets can invalidate existing Spark checkpoints. To stop the existing container safely, use `docker compose stop`.
 
-### Run the pipeline
+### 4. Run the pipeline
 
-Run each of the following in a **separate terminal**, from the project root, with `.venv` activated. Start Kafka first.
+Start each process in a **separate terminal**, from the repository root, with the virtual environment activated. Start Kafka first.
 
 **Terminal 1 — Producer**
 
@@ -130,13 +179,13 @@ PYSPARK_SUBMIT_ARGS="--packages org.apache.spark:spark-sql-kafka-0-10_2.13:4.2.0
 python spark/bronze_stream.py
 ```
 
-**Terminal 3 — Silver Spark stream**
+**Terminal 3 — Deduplicated Silver stream**
 
 ```bash
 python spark/silver_stream_dedup.py
 ```
 
-**Terminal 4 — Periodic analytics refresh**
+**Terminal 4 — Analytics refresh**
 
 ```bash
 python orchestration/refresh_pipeline.py
@@ -148,36 +197,48 @@ python orchestration/refresh_pipeline.py
 python -m streamlit run dashboard/app.py
 ```
 
-Open the local URL printed by Streamlit (typically `http://localhost:8501`). The dashboard reads the latest published Gold snapshot.
+Open the URL printed by Streamlit (typically `http://localhost:8501`). The dashboard reads the latest **published** Gold snapshot.
 
-To stop, use `Ctrl+C` in each terminal, then `docker compose stop` for Kafka.
+Stop each foreground process with `Ctrl+C`, then stop Kafka with:
 
-## Analytics and retention details
+```bash
+docker compose stop
+```
 
-- The combined Silver refresh merges historical Silver datasets with committed live Silver observations, then deduplicates using vehicle ID, vehicle timestamp, latitude, and longitude.
-- Movement enrichment computes per-vehicle movement features and flags suspicious speeds.
-- Gold publication writes a versioned snapshot and updates `data/gold_snapshots/current.json` after verification.
-- The refresh service schedules a new analytics cycle approximately every 300 seconds, counting processing time toward the interval.
-- The cleanup utility normally retains the five most recent snapshots per layer and protects the currently published Gold snapshot.
-- A local Streamlit-process check skips Gold deletion when the dashboard is detected. This is a development safeguard, **not** distributed reader coordination.
-- The refresh service has a single-instance process lock, tested by verifying that a second process could not acquire it.
+## Analytics and snapshot lifecycle
 
-## Reproducibility notes and limitations
+- **Combined Silver:** Merge configured historical Silver sources with committed live Silver observations, then deduplicate using vehicle ID, timestamp, latitude, and longitude.
+- **Movement enrichment:** Calculate per-vehicle movement features and flag suspicious speeds using the project's movement rules.
+- **Gold publication:** Write a versioned snapshot and update `data/gold_snapshots/current.json` after verification.
+- **Refresh cadence:** The orchestration service targets a cycle roughly every 300 seconds, including processing time.
+- **Retention:** Cleanup normally retains the five most recent snapshots per layer and protects the current published Gold snapshot.
+- **Reader safeguard:** Gold deletion is skipped when a local Streamlit process is detected. This is a development safeguard, **not** distributed reader coordination.
+- **Single-instance execution:** A local file lock was tested by confirming that a second refresh process could not acquire it.
 
-- **Historical input configuration:** The current combined Silver script references dated local backup directories. A fresh clone will not contain these backups, so configure available historical sources or adapt the script for live-only operation before expecting a full end-to-end run.
-- **Feed configuration:** The GTFS endpoint and any credentials or access requirements depend on the ingestion implementation. Inspect and configure it for your environment; never commit secrets.
-- **Kafka durability:** Explicit named-volume persistence and safe migration of existing Kafka data remain future work.
-- **Operational validation:** One scheduled refresh cycle and local lock/dashboard cleanup safeguards were verified. Long-running unattended operation, concurrent readers, and recovery after broker recreation have not been fully validated.
-- **Environment:** This project was developed and tested locally on macOS, not deployed to a production cloud environment.
+## Validation status and known limitations
 
-## Future improvements
+| Area | Status |
+| --- | --- |
+| Live feed → Kafka → Spark → dashboard | Verified in a local run |
+| Example analytics results | Verified on October 30, 2026 |
+| One scheduled refresh cycle | Verified |
+| Duplicate local refresh prevention | Verified with a second-process lock test |
+| Dashboard-aware cleanup safeguard | Checked locally |
+| Second scheduled cycle and long-running reliability | Not yet verified |
+| Fresh-clone end-to-end bootstrap | Not yet supported without historical input configuration |
+| Broker recreation / offset recovery | Not fully validated |
+| Cloud deployment and distributed coordination | Not implemented |
+| Automated test suite and CI | Future work |
 
-- Configurable historical/live data source paths and fresh-clone bootstrap.
-- Explicit durable Kafka storage and recovery procedures.
-- Automated tests and continuous integration.
-- Stronger snapshot reader coordination and retention policies.
-- Containerization, monitoring, and cloud deployment.
+## Next engineering improvements
 
-## Purpose
+1. Make historical data paths configurable and support a clean live-only bootstrap.
+2. Add automated tests for validation, deduplication, and movement enrichment, plus CI.
+3. Document Kafka persistence and recovery; migrate to explicitly managed durable storage where appropriate.
+4. Strengthen dashboard-reader coordination and snapshot retention for concurrent access.
+5. Add real dashboard screenshots and an operational walkthrough.
+6. Evaluate monitoring and deployment options after local reproducibility is improved.
 
-This project demonstrates streaming data engineering, data quality validation, Spark transformation pipelines, medallion-style analytics, orchestration, and interactive visualization using a public transit mobility use case.
+## Project scope
+
+This repository demonstrates practical **streaming data engineering**, **medallion-style data processing**, **data quality controls**, **movement analytics**, **orchestration**, and **interactive visualization** in a public-transit use case. It is intended as a transparent, locally validated engineering project with clearly documented next steps.
