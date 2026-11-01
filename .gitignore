@@ -45,3 +45,4 @@ temp/
 # Local runtime artifacts
 *.lock
 spark/gold_analytics_backup.py
+README.md.backup
